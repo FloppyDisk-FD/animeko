@@ -34,8 +34,8 @@ class GetSubjectRecommendationUseCaseImpl(private val service: SubjectService) :
     override suspend fun invoke(subjectId: Int): List<SubjectRecommendation> {
         return service.getSubjectRecommendations(subjectId, 15)
             // 服务端会在推荐列表混入推广条目 (subjectId 为负数占位, uri 指向外部网站, 图片在 ad-images 目录).
-            // 只保留真实番剧 (subjectId > 0), 与首页推荐保持一致.
-            .filter { it.subjectId != null && it.subjectId > 0 }
+            // 只保留真实番剧 (subjectId > 0), 与首页推荐保持一致. 注意 subjectId 是跨模块 public 属性, 不能用 smart cast.
+            .filter { (it.subjectId ?: 0) > 0 }
             .map {
                 SubjectRecommendation(
                     subjectId = it.subjectId,
