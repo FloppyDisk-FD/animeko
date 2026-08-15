@@ -563,7 +563,8 @@ fun EpisodeDetails(
                 item("subject_recommendation_${recommendation.uniqueId}") {
                     SubjectRecommendationCard(
                         {
-                            val targetSubjectId = recommendation.subjectId?.toInt()
+                            // 只允许跳转真实番剧 (subjectId > 0); 负数占位 ID 为服务端推广条目, 直接忽略
+                            val targetSubjectId = recommendation.subjectId?.takeIf { it > 0 }?.toInt()
                             Analytics.recordEvent(SubjectRecommendationClick) {
                                 targetSubjectId?.let { put("subject_id", it) }
                             }
