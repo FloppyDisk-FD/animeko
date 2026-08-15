@@ -22,16 +22,10 @@ interface AniBuildConfig {
     val isDebug: Boolean
     val dandanplayAppId: String
     val dandanplayAppSecret: String
-    val sentryDsn: String
     val overrideAniApiServer: String
         get() = ""
 
     val distroChannel: String
-
-    val sentryEnabled: Boolean
-        get() = true
-    val analyticsEnabled: Boolean
-        get() = true
 
     val isDefaultDistro: Boolean
         get() = distroChannel == DISTRO_PLATFORM_DEFAULT

@@ -49,12 +49,8 @@ import Secrets.AWS_REGION
 import Secrets.AWS_SECRET_ACCESS_KEY
 import Secrets.DANDANPLAY_APP_ID
 import Secrets.DANDANPLAY_APP_SECRET
-import Secrets.FIREBASE_GA_API_SECRET
-import Secrets.FIREBASE_GA_APP_ID
 import Secrets.GITHUB_REPOSITORY
-import Secrets.GOOGLE_SERVICES_JSON
 import Secrets.OPENAI_API_KEY
-import Secrets.SENTRY_DSN
 import Secrets.SIGNING_RELEASE_KEYALIAS
 import Secrets.SIGNING_RELEASE_KEYPASSWORD
 import Secrets.SIGNING_RELEASE_STOREFILE
@@ -558,7 +554,6 @@ fun getBuildJobBody(matrix: MatrixInstance): JobBuilder<BuildJobOutputs>.() -> U
         )
 
         val prepareSigningKey = prepareSigningKey()
-        prepareGoogleServicesJson()
         compileAndAssemble()
         prepareSigningKey?.let {
             buildAndroidApk(it)
@@ -668,12 +663,6 @@ fun getVerifyJobBody(
         VerifyTask(
             name = "dandanplay-app-id",
             step = "Check that Dandanplay APP ID is valid",
-            `if` = expr { github.isAnimekoRepository and !github.isPullRequest },
-            disabledOn = listOf(Runner.GithubWindows11Arm64),
-        ),
-        VerifyTask(
-            name = "sentry-dsn",
-            step = "Check that sentryDsn is valid",
             `if` = expr { github.isAnimekoRepository and !github.isPullRequest },
             disabledOn = listOf(Runner.GithubWindows11Arm64),
         ),
@@ -1040,7 +1029,6 @@ workflow(
             )
 
             val prepareSigningKey = prepareSigningKey()
-            prepareGoogleServicesJson()
             compileAndAssemble()
 
             prepareSigningKey?.let {
@@ -1216,26 +1204,10 @@ class WithMatrix(
                     }
                     property("ani.dandanplay.app.id", expr { secrets.DANDANPLAY_APP_ID })
                     property("ani.dandanplay.app.secret", expr { secrets.DANDANPLAY_APP_SECRET })
-                    property("ani.sentry.dsn", expr { secrets.SENTRY_DSN })
                     property("kotlin.native.ignoreDisabledTargets", "true")
                 },
             ),
             continueOnError = true,
-        )
-        run(
-            command = shell(
-                buildString {
-                    fun property(key: String, value: String) {
-                        appendLine("""echo "${"$key=$value"}" >> local.properties""")
-                    }
-
-                    property("ani.enable.firebase", "true")
-                    property("firebase.ga.app.id", expr { secrets.FIREBASE_GA_APP_ID })
-                    property("firebase.ga.api.secret", expr { secrets.FIREBASE_GA_API_SECRET })
-                },
-            ),
-            continueOnError = true,
-            `if` = expr { github.isAnimekoRepository and !github.isPullRequest },
         )
     }
 
@@ -1505,19 +1477,6 @@ class WithMatrix(
         } else {
             null
         }
-    }
-
-    /**
-     * Returns the action step if it's enabled, otherwise returns `null`.
-     */
-    fun JobBuilder<*>.prepareGoogleServicesJson(): CommandStep {
-        return prepareBase64File(
-            name = "Prepare google-services.json",
-            `if` = expr { github.isAnimekoRepository and !github.isPullRequest },
-            fileName = "google-services.json",
-            fileDir = "./app/android",
-            encodedString = expr { secrets.GOOGLE_SERVICES_JSON },
-        )
     }
 
     fun JobBuilder<*>.prepareBase64File(
@@ -2128,14 +2087,10 @@ object Secrets {
     val SecretsContext.AWS_BUCKET by SecretsContext.propertyToExprPath
     val SecretsContext.DANDANPLAY_APP_ID by SecretsContext.propertyToExprPath
     val SecretsContext.DANDANPLAY_APP_SECRET by SecretsContext.propertyToExprPath
-    val SecretsContext.SENTRY_DSN by SecretsContext.propertyToExprPath
     val SecretsContext.ANALYTICS_SERVER by SecretsContext.propertyToExprPath
     val SecretsContext.ANALYTICS_KEY by SecretsContext.propertyToExprPath
 
-    val SecretsContext.GOOGLE_SERVICES_JSON by SecretsContext.propertyToExprPath
     val SecretsContext.OPENAI_API_KEY by SecretsContext.propertyToExprPath
-    val SecretsContext.FIREBASE_GA_APP_ID by SecretsContext.propertyToExprPath
-    val SecretsContext.FIREBASE_GA_API_SECRET by SecretsContext.propertyToExprPath
     val SecretsContext.APPSTORE_API_KEY_ID by SecretsContext.propertyToExprPath
     val SecretsContext.APPSTORE_API_PRIVATE_KEY by SecretsContext.propertyToExprPath
     val SecretsContext.APPSTORE_ISSUER_ID by SecretsContext.propertyToExprPath

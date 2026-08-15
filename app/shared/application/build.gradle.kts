@@ -16,7 +16,6 @@ plugins {
     alias(libs.plugins.kotlin.plugin.serialization)
 
     // alias(libs.plugins.kotlinx.atomicfu)
-    alias(libs.plugins.sentry.kotlin.multiplatform)
 }
 
 kotlin {
@@ -40,7 +39,6 @@ kotlin {
 
 kotlin {
     if (enableIos && buildIosFramework && getOs() == Os.MacOS) {
-        // Sentry requires cocoapods for its dependencies
         extensions.configure<CocoapodsExtension> {
             // https://kotlinlang.org/docs/native-cocoapods.html#configure-existing-project
             framework {
@@ -53,7 +51,6 @@ kotlin {
             pod("onnxruntime-objc") {
                 version = libs.versions.onnxruntime.get()
             }
-            // iOS Firebase SDKs are linked from the host Podfile
         }
 
         val httpDownloaderProject = project(":utils:http-downloader")

@@ -68,6 +68,3 @@ val Project.enableIos
 
 val Project.buildIosFramework
     get() = getPropertyOrNull("ani.build.framework")?.toBooleanStrict() ?: false
-
-val Project.enableFirebase
-    get() = getPropertyOrNull("ani.enable.firebase")?.toBooleanStrict() ?: false

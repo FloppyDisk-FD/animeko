@@ -32,16 +32,19 @@ fun interface GetSubjectRecommendationUseCase : UseCase {
 
 class GetSubjectRecommendationUseCaseImpl(private val service: SubjectService) : GetSubjectRecommendationUseCase {
     override suspend fun invoke(subjectId: Int): List<SubjectRecommendation> {
-        return service.getSubjectRecommendations(subjectId, 15).map {
-            SubjectRecommendation(
-                subjectId = it.subjectId,
-                name = it.subjectName,
-                nameCn = it.subjectNameCn,
-                desc1 = it.desc1,
-                desc2 = it.desc2,
-                imageUrl = it.imageUrl,
-                uri = it.uri,
-            )
-        }
+        return service.getSubjectRecommendations(subjectId, 15)
+            // 过滤掉服务端下发的非番剧条目 (无 subjectId 的推广/广告外链), 与首页推荐保持一致
+            .filter { it.subjectId != null }
+            .map {
+                SubjectRecommendation(
+                    subjectId = it.subjectId,
+                    name = it.subjectName,
+                    nameCn = it.subjectNameCn,
+                    desc1 = it.desc1,
+                    desc2 = it.desc2,
+                    imageUrl = it.imageUrl,
+                    uri = it.uri,
+                )
+            }
     }
 }

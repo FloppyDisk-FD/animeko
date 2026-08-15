@@ -9,14 +9,8 @@
 
 package me.him188.ani.utils.analytics
 
-import me.him188.ani.utils.platform.currentPlatform
-import kotlin.concurrent.Volatile
-import kotlin.jvm.JvmInline
-
 /**
- * Global instance of [IAnalytics].
- *
- * 如果用户愿意分享数据，此实例将为 [AnalyticsImpl]. 否则为 no-op.
+ * Global instance of [IAnalytics]. Always a no-op: 本项目不集成任何第三方分析/广告 SDK.
  */
 val Analytics: IAnalytics get() = AnalyticsHolder.getInstance()
 
@@ -75,69 +69,10 @@ value class AnalyticsEvent(val event: String) {
     }
 }
 
-
-///////////////////////////////////////////////////////////////////////////
-// implementation
-///////////////////////////////////////////////////////////////////////////
-
-data class AnalyticsConfig(
-    val appVersion: String,
-    val debugLogging: Boolean,
-) {
-    companion object
-}
-
-/**
- * Common implementation of [IAnalytics]
- */
-abstract class CommonAnalyticsImpl(
-    protected val config: AnalyticsConfig,
-) : IAnalytics {
-    protected val intrinsicProperties: Map<String, Any> = buildMap {
-        val platform = currentPlatform()
-        put("os", platform.name)
-        put("arch", platform.arch.name)
-        put("\$app_version", config.appVersion)
-    }
-
-    final override fun recordEvent(event: AnalyticsEvent, properties: Map<String, Any?>) {
-        @Suppress("UNCHECKED_CAST")
-        recordEventImpl(
-            event,
-            properties.filterValues { it != null } as Map<String, Any>,
-        )
-    }
-
-    protected abstract fun recordEventImpl(event: AnalyticsEvent, properties: Map<String, Any> = emptyMap())
-
-
-    protected fun sanitizeEventName(name: String): String {
-        val cleaned = name.replace(Regex("[^A-Za-z0-9_-]+"), "_")
-            .trim('_')
-        return cleaned.ifEmpty { "event" }.take(40)
-    }
-
-    protected fun sanitizeParamKey(name: String): String {
-        val noDollar = name.removePrefix("$")
-        val cleaned = noDollar.replace(Regex("[^A-Za-z0-9_]+"), "_")
-        val startAlpha = if (cleaned.firstOrNull()?.isLetter() == true) cleaned else "p_$cleaned"
-        return startAlpha.take(40)
-    }
-}
-
 object AnalyticsHolder {
-    @Volatile
-    private var instance: IAnalytics = NoopAnalytics
+    private val instance: IAnalytics = NoopAnalytics
 
     internal fun getInstance(): IAnalytics = instance
-
-    /**
-     * 启动 APP 时调用.
-     */
-    fun init(instance: IAnalytics) {
-        check(this.instance === NoopAnalytics) { "Analytics instance is already initialized" }
-        this.instance = instance
-    }
 }
 
 private object NoopAnalytics : IAnalytics {

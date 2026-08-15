@@ -30,11 +30,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.io.files.SystemFileSystem
 import me.him188.ani.app.data.persistent.database.AniDatabase
 import me.him188.ani.app.data.repository.user.SettingsRepository
-import me.him188.ani.app.data.repository.user.UserRepository
 import me.him188.ani.app.domain.foundation.HttpClientProvider
 import me.him188.ani.app.domain.foundation.ScopedHttpClientUserAgent
 import me.him188.ani.app.domain.foundation.get
@@ -144,32 +142,6 @@ fun startIosApp(): AniIosApplication {
         modules(getIosModules(context, context.files.dataDir.resolve("torrent"), scope))
     }.startCommonKoinModule(context, scope).koin
     startupTimeMonitor.mark(StepName.Modules)
-    val userRepository = koin.get<UserRepository>()
-
-    val analyticsInitializer = scope.launch {
-        val settingsRepository = koin.get<SettingsRepository>()
-        val settings = settingsRepository.analyticsSettings.flow.first()
-        settingsRepository.analyticsSettings.update { settings }
-        if (settings.isBugReportEnabled) {
-            AppStartupTasks.initializeSentry(settings.deviceId)
-        }
-//        if (settings.isAnalyticsEnabled) {
-//            AppStartupTasks.initializeAnalytics {
-//                AnalyticsImpl(
-//                    AnalyticsConfig.create(),
-//                    settings.deviceId,
-//                    userId = { userRepository.selfInfoFlow.first()?.id },
-//                    AnalyticsSecrets(
-//                        apiSecret = AniBuildConfigIos.firebaseGAApiSecret,
-//                        firebaseAppId = AniBuildConfigIos.firebaseGAAppId,
-//                    ),
-//                    scope.coroutineContext,
-//                ).apply {
-//                    init()
-//                }
-//            }
-//        }
-    }
 
     koin.get<TorrentManager>() // start sharing, connect to DHT now
 
@@ -180,11 +152,9 @@ fun startIosApp(): AniIosApplication {
         TestGlobalLifecycleOwner, // TODO: ios lifecycle
     )
 
-    runBlocking { analyticsInitializer.join() }
     startupTimeMonitor.mark(StepName.Analytics)
 
     scope.launch {
-        analyticsInitializer.join()
         Analytics.recordAppStart(startupTimeMonitor)
     }
 

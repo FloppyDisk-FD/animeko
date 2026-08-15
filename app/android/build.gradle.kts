@@ -7,14 +7,11 @@
  * https://github.com/open-ani/ani/blob/main/LICENSE
  */
 
-import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
-
 plugins {
     id("ani.android-application")
     alias(libs.plugins.jetbrains.compose)
     alias(libs.plugins.kotlin.plugin.compose)
     alias(libs.plugins.kotlinx.atomicfu)
-    alias(libs.plugins.google.gms.google.services)
     idea
 }
 
@@ -136,11 +133,4 @@ idea {
     module {
         excludeDirs.add(file(".cxx"))
     }
-}
-
-googleServices {
-    missingGoogleServicesStrategy = (getLocalProperty("ani.enable.firebase") ?: "false").toBooleanStrict()
-        .let {
-            if (it) MissingGoogleServicesStrategy.ERROR else MissingGoogleServicesStrategy.IGNORE
-        }
 }

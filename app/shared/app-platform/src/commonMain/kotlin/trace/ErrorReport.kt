@@ -18,18 +18,11 @@ interface ErrorReportScope {
 interface IErrorReport {
     fun captureMessage(
         message: String,
-//        level: SentryLevel = SentryLevel.INFO,
         config: ErrorReportScope.() -> Unit = {}
     )
 
-//    fun breadcrumb(
-//        breadcrumb: Breadcrumb,
-//        config: Breadcrumb.() -> Unit = {}
-//    ) = Sentry.addBreadcrumb(breadcrumb.apply(config))
-
     fun captureException(
         throwable: Throwable,
-//        level: SentryLevel = SentryLevel.WARNING,
         config: ErrorReportScope.() -> Unit = {}
     )
 }

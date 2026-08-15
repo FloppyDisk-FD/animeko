@@ -74,14 +74,6 @@ object TestTasks {
                 exitProcess(0)
             }
 
-            "sentry-dsn" -> {
-                if (currentAniBuildConfig.sentryDsn.isBlank()) {
-                    logger.error { "sentryDsn is empty" }
-                    exitProcess(1)
-                }
-                exitProcess(0)
-            }
-
             else -> {
                 logger.error { "Unknown test task: $taskName" }
                 exitProcess(1)

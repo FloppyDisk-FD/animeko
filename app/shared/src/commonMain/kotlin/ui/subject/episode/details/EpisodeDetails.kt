@@ -95,8 +95,6 @@ import me.him188.ani.app.domain.media.cache.EpisodeCacheStatus
 import me.him188.ani.app.domain.player.VideoLoadingState
 import me.him188.ani.app.navigation.LocalNavigator
 import me.him188.ani.app.navigation.SubjectDetailPlaceholder
-import me.him188.ani.app.platform.LocalContext
-import me.him188.ani.app.platform.navigation.LocalBrowserNavigator
 import me.him188.ani.app.ui.foundation.ProvideCompositionLocalsForPreview
 import me.him188.ani.app.ui.foundation.animation.AniAnimatedVisibility
 import me.him188.ani.app.ui.foundation.animation.LocalAniMotionScheme
@@ -255,9 +253,6 @@ fun EpisodeDetails(
             }
         }
     }
-
-    val context = LocalContext.current
-    val browserNavigator = LocalBrowserNavigator.current
 
     var expandDanmakuStatistics by rememberSaveable { mutableStateOf(false) }
     var expandEpisodeList by rememberSaveable { mutableStateOf(false) }
@@ -568,20 +563,15 @@ fun EpisodeDetails(
                 item("subject_recommendation_${recommendation.uniqueId}") {
                     SubjectRecommendationCard(
                         {
-                            val uri = recommendation.uri
                             val targetSubjectId = recommendation.subjectId?.toInt()
                             Analytics.recordEvent(SubjectRecommendationClick) {
                                 targetSubjectId?.let { put("subject_id", it) }
-                                uri?.let { put("target_uri", it) }
                             }
                             Analytics.recordEvent(SubjectEnter) {
                                 put("source", "episode_recommendation")
                                 targetSubjectId?.let { put("subject_id", it) }
-                                uri?.let { put("target_uri", it) }
                             }
-                            if (uri != null) {
-                                browserNavigator.openBrowser(context, uri)
-                            } else if (targetSubjectId != null) {
+                            if (targetSubjectId != null) {
                                 navigator.navigateSubjectDetails(
                                     targetSubjectId,
                                     SubjectDetailPlaceholder(

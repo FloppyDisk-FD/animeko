@@ -26,29 +26,5 @@ kotlin {
                 api(projects.utils.logging)
             }
         }
-        val skikoMain by getting {
-            dependencies {
-                api(projects.utils.ktorClient)
-                api(projects.utils.serialization)
-                api(projects.utils.coroutines)
-            }
-        }
-        val jvmMain by getting {
-            dependencies {
-                api(libs.firebase.analytics)
-            }
-        }
-        val androidMain by getting {
-            dependencies {
-                /*
-                
-      > Could not find com.google.firebase:firebase-common:.
-        Required by:
-            project :app:android > project :app:shared > project :app:shared:app-platform > project :utils:analytics > dev.gitlive:firebase-analytics:2.3.0 > dev.gitlive:firebase-analytics-android:2.3.0 > dev.gitlive:firebase-app:2.3.0 > dev.gitlive:firebase-app-android:2.3.0
-                 */
-                api(libs.google.firebase.common)
-                api(libs.google.firebase.analytics)
-            }
-        }
     }
 }
