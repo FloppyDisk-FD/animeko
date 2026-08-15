@@ -74,7 +74,6 @@ import me.him188.ani.app.platform.LocalContext
 import me.him188.ani.app.platform.PlatformWindow
 import me.him188.ani.app.platform.StartupTimeMonitor
 import me.him188.ani.app.platform.StepName
-import me.him188.ani.app.platform.create
 import me.him188.ani.app.platform.createAppRootCoroutineScope
 import me.him188.ani.app.platform.currentAniBuildConfig
 import me.him188.ani.app.platform.getCommonKoinModule
@@ -105,6 +104,7 @@ import me.him188.ani.app.ui.main.AniApp
 import me.him188.ani.app.ui.main.AniAppContent
 import me.him188.ani.desktop.generated.resources.Res
 import me.him188.ani.desktop.generated.resources.a_round
+import me.him188.ani.utils.analytics.Analytics
 import me.him188.ani.utils.logging.debug
 import me.him188.ani.utils.logging.error
 import me.him188.ani.utils.logging.info
