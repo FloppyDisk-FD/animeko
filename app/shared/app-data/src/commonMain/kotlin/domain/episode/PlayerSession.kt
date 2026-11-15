@@ -10,16 +10,22 @@
 package me.him188.ani.app.domain.episode
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import me.him188.ani.app.data.models.preference.HlsAdFilteringMode
+import me.him188.ani.app.domain.media.hls.HlsPlaybackOptions
 import me.him188.ani.app.domain.media.hls.HlsPlaybackPreparer
 import me.him188.ani.app.domain.media.hls.HlsPlaybackProxySession
+import me.him188.ani.app.domain.media.player.prefetch.MediaPrefetchController
 import me.him188.ani.app.domain.media.fetch.MediaFetchSession
+import me.him188.ani.app.domain.media.player.data.TorrentMediaData
 import me.him188.ani.app.domain.media.resolver.EpisodeMetadata
 import me.him188.ani.app.domain.media.resolver.MediaResolutionException
 import me.him188.ani.app.domain.media.resolver.MediaResolver
@@ -29,10 +35,11 @@ import me.him188.ani.app.domain.media.resolver.ResolutionFailures
 import me.him188.ani.app.domain.media.resolver.TorrentBackedMediaDataProvider
 import me.him188.ani.app.domain.media.resolver.UnsupportedMediaException
 import me.him188.ani.app.domain.media.selector.MediaSelector
+import me.him188.ani.app.domain.mediasource.MediaSourceTags
+import me.him188.ani.app.domain.mediasource.instance.GetMediaSourceInstancesUseCase
 import me.him188.ani.app.domain.player.VideoLoadingState
 import me.him188.ani.app.domain.settings.GetVideoScaffoldConfigUseCase
 import me.him188.ani.datasources.api.Media
-import me.him188.ani.datasources.api.source.MediaSourceKind
 import me.him188.ani.utils.logging.error
 import me.him188.ani.utils.logging.info
 import me.him188.ani.utils.logging.logger
@@ -40,9 +47,11 @@ import me.him188.ani.utils.logging.warn
 import org.koin.core.Koin
 import org.openani.mediamp.MediampPlayer
 import org.openani.mediamp.PlaybackException
+import org.openani.mediamp.errorOrNull
 import org.openani.mediamp.source.MediaData
 import org.openani.mediamp.source.UriMediaData
 import kotlin.coroutines.CoroutineContext
+import kotlin.time.TimeSource
 
 class MediaFetchSelectBundle(
     val mediaFetchSession: MediaFetchSession,
@@ -58,13 +67,29 @@ class MediaFetchSelectBundle(
 class PlayerSession(
     val player: MediampPlayer,
     koin: Koin,
+    backgroundScope: CoroutineScope,
     private val mainDispatcher: CoroutineContext = Dispatchers.Main.immediate,
 ) {
     val mediaResolver: MediaResolver by koin.inject()
     private val hlsPlaybackPreparer: HlsPlaybackPreparer by koin.inject()
     private val getVideoScaffoldConfigUseCase: GetVideoScaffoldConfigUseCase by koin.inject()
+    private val getMediaSourceInstancesUseCase: GetMediaSourceInstancesUseCase by koin.inject()
 
-    private var hlsPlaybackProxySession: HlsPlaybackProxySession? = null
+    private val hlsPlaybackProxySessionFlow = MutableStateFlow<HlsPlaybackProxySession?>(null)
+    private var hlsPlaybackProxySession: HlsPlaybackProxySession?
+        get() = hlsPlaybackProxySessionFlow.value
+        set(value) {
+            hlsPlaybackProxySessionFlow.value = value
+        }
+
+    /**
+     * 提前缓存指定时间范围的媒体数据 (如自动跳过 OP 后的位置), 见 [MediaPrefetchController].
+     */
+    val prefetchController: MediaPrefetchController = MediaPrefetchController(
+        player,
+        hlsPlaybackProxySessionFlow,
+        backgroundScope,
+    )
 
     private val _videoLoadingStateFlow: MutableStateFlow<VideoLoadingState> =
         MutableStateFlow(VideoLoadingState.Initial)
@@ -74,10 +99,33 @@ class PlayerSession(
      */
     val videoLoadingState: StateFlow<VideoLoadingState> get() = _videoLoadingStateFlow.asStateFlow()
 
+    init {
+        backgroundScope.launch {
+            // 打开失败由 loadMedia 记录, 这里记录媒体加载成功后播放过程中的错误
+            player.state.collect { state ->
+                val error = state.errorOrNull ?: return@collect
+                if (_videoLoadingStateFlow.value is VideoLoadingState.Succeed) {
+                    logger.warn(error) { "Player error during playback" }
+                }
+            }
+        }
+    }
+
     /**
-     * 解析 media 并开始播放这个 media.
+     * 解析 media 并从 [startPositionMillis] 开始播放这个 media.
+     *
+     * @param startPositionMillis 起播位置, 续播时为记忆的进度. 播放器在打开媒体时就定位到这里
+     * ([MediampPlayer.setMediaData]), 而不是先从头起播、缓冲, 再跳转并重新缓冲.
+     * 经 HLS 代理播放时它同时是预缓存的起点 ([HlsPlaybackPreparer.prepare]);
+     * 播放器打开的是去除广告后的播放列表, 两者都在这条时间轴上.
+     * @param listener 观察本次加载的各阶段与结果, 供埋点使用.
      */
-    suspend fun loadMedia(media: Media?, episodeInfo: EpisodeMetadata) = coroutineScope {
+    suspend fun loadMedia(
+        media: Media?,
+        episodeInfo: EpisodeMetadata,
+        startPositionMillis: Long = 0L,
+        listener: MediaLoadListener = MediaLoadListener.Noop,
+    ) = coroutineScope {
         val backgroundScope = this
         _videoLoadingStateFlow.value = VideoLoadingState.Initial // 避免一直显示已取消 (.Cancelled)
         stopPlayback()
@@ -85,33 +133,55 @@ class PlayerSession(
             return@coroutineScope
         }
 
+        val start = TimeSource.Monotonic.markNow()
+        var phase = MediaLoadPhase.RESOLVE
+        fun fail(state: VideoLoadingState.Failed) {
+            _videoLoadingStateFlow.value = state
+            listener.onFailed(phase, state, start.elapsedNow())
+        }
+
         var preparedHlsPlaybackProxySession: HlsPlaybackProxySession? = null
         try {
             _videoLoadingStateFlow.value = VideoLoadingState.ResolvingSource
+            listener.onResolveStart(mediaResolver.resolverFor(media)?.let { it::class.simpleName })
             val source = mediaResolver.resolve(
                 media,
                 episodeInfo,
             )
+            val resolvedEngineKey = (source as? TorrentBackedMediaDataProvider)?.engineKey
             _videoLoadingStateFlow.compareAndSet(
                 VideoLoadingState.ResolvingSource,
-                VideoLoadingState.DecodingData(isBt = media.kind == MediaSourceKind.BitTorrent),
+                VideoLoadingState.DecodingData(engineKey = resolvedEngineKey),
             )
+            listener.onResolved(resolvedEngineKey, start.elapsedNow())
 
+            phase = MediaLoadPhase.OPEN
             val data = source.open(scopeForCleanup = backgroundScope) // may throw MediaSourceOpenException
-            val preparedData = prepareHlsPlaybackIfEnabled(data).also {
+            // 打开阶段可能从云盘回退到本地 BT, 此时 data 才是真正承载播放的引擎;
+            // 只有不产出 TorrentMediaData 的实现才退回 provider 声明的引擎.
+            val openedEngineKey = (data as? TorrentMediaData)?.engineKey ?: resolvedEngineKey
+            listener.onOpened(openedEngineKey, start.elapsedNow())
+
+            val preparedData = prepareHlsPlaybackIfEnabled(
+                data,
+                media,
+                startPositionHintMillis = startPositionMillis.takeIf { it > 0L },
+            ).also {
                 preparedHlsPlaybackProxySession = it.session
             }.data
 
-            logger.info { "Set media data to player: $preparedData" }
-            // v2: setMediaData 挂起直到媒体真正打开, 并直接携带播放意图, 无需再单独 resume.
-            player.setMediaData(preparedData, playWhenReady = true)
+            phase = MediaLoadPhase.SET_MEDIA_DATA
+            logger.info { "Set media data to player at ${startPositionMillis}ms: $preparedData" }
+            // v2: setMediaData 挂起直到媒体真正打开, 播放意图和起播位置随打开一并生效.
+            player.setMediaData(preparedData, playWhenReady = true, startPositionMillis = startPositionMillis)
             hlsPlaybackProxySession = preparedHlsPlaybackProxySession
             preparedHlsPlaybackProxySession = null
 
-            _videoLoadingStateFlow.value = VideoLoadingState.Succeed(isBt = source is TorrentBackedMediaDataProvider)
+            _videoLoadingStateFlow.value = VideoLoadingState.Succeed(engineKey = openedEngineKey)
+            listener.onReady(start.elapsedNow())
         } catch (e: UnsupportedMediaException) {
             logger.warn { IllegalStateException("Failed to resolve video source, unsupported media", e) }
-            _videoLoadingStateFlow.value = VideoLoadingState.UnsupportedMedia
+            fail(VideoLoadingState.UnsupportedMedia)
             stopPlayback()
         } catch (e: MediaSourceOpenException) { // during playerState.setVideoSource
             logger.warn {
@@ -120,11 +190,13 @@ class PlayerSession(
                     e,
                 )
             }
-            _videoLoadingStateFlow.value = when (e.reason) {
-                OpenFailures.NO_MATCHING_FILE -> VideoLoadingState.NoMatchingFile
-                OpenFailures.UNSUPPORTED_VIDEO_SOURCE -> VideoLoadingState.UnsupportedMedia
-                OpenFailures.ENGINE_DISABLED -> VideoLoadingState.UnsupportedMedia
-            }
+            fail(
+                when (e.reason) {
+                    OpenFailures.NO_MATCHING_FILE -> VideoLoadingState.NoMatchingFile
+                    OpenFailures.UNSUPPORTED_VIDEO_SOURCE -> VideoLoadingState.UnsupportedMedia
+                    OpenFailures.ENGINE_DISABLED -> VideoLoadingState.UnsupportedMedia
+                },
+            )
             stopPlayback()
         } catch (e: MediaResolutionException) { // during MediaResolver.resolve
             logger.warn {
@@ -133,23 +205,27 @@ class PlayerSession(
                     e,
                 )
             }
-            _videoLoadingStateFlow.value = when (e.reason) {
-                ResolutionFailures.FETCH_TIMEOUT -> VideoLoadingState.ResolutionTimedOut
-                ResolutionFailures.ENGINE_ERROR -> VideoLoadingState.UnknownError(e)
-                ResolutionFailures.NETWORK_ERROR -> VideoLoadingState.NetworkError
-                ResolutionFailures.NO_MATCHING_RESOURCE -> VideoLoadingState.NoMatchingFile
-            }
+            fail(
+                when (e.reason) {
+                    ResolutionFailures.FETCH_TIMEOUT -> VideoLoadingState.ResolutionTimedOut
+                    ResolutionFailures.ENGINE_ERROR -> VideoLoadingState.UnknownError(e)
+                    ResolutionFailures.NETWORK_ERROR -> VideoLoadingState.NetworkError
+                    ResolutionFailures.NO_MATCHING_RESOURCE -> VideoLoadingState.NoMatchingFile
+                    ResolutionFailures.WEB_ENGINE_UNAVAILABLE -> VideoLoadingState.WebEngineUnavailable
+                },
+            )
             stopPlayback()
         } catch (e: CancellationException) { // 切换数据源 (含 MediaLoadCancellationException)
             _videoLoadingStateFlow.value = VideoLoadingState.Cancelled
+            listener.onCancelled(phase, start.elapsedNow())
             throw e
         } catch (e: PlaybackException) { // during player.setMediaData, 播放器拒绝了这个媒体
             logger.warn { IllegalStateException("Player rejected the media data", e) }
-            _videoLoadingStateFlow.value = VideoLoadingState.UnknownError(e)
+            fail(VideoLoadingState.UnknownError(e))
             stopPlayback()
         } catch (e: Throwable) {
             logger.error { IllegalStateException("Failed to resolve video source with unknown error", e) }
-            _videoLoadingStateFlow.value = VideoLoadingState.UnknownError(e)
+            fail(VideoLoadingState.UnknownError(e))
             stopPlayback()
         } finally {
             preparedHlsPlaybackProxySession?.close()
@@ -172,19 +248,36 @@ class PlayerSession(
         }
     }
 
-    private suspend fun prepareHlsPlaybackIfEnabled(data: MediaData): PreparedMediaData {
+    private suspend fun prepareHlsPlaybackIfEnabled(
+        data: MediaData,
+        media: Media,
+        startPositionHintMillis: Long?,
+    ): PreparedMediaData {
         if (data !is UriMediaData) {
             return PreparedMediaData(data)
         }
-        val enabled = getVideoScaffoldConfigUseCase
-            .invoke()
-            .first()
-            .enableExperimentalHlsSegmentFiltering
-        if (!enabled) {
+        val config = getVideoScaffoldConfigUseCase.invoke().first()
+        val options = HlsPlaybackOptions(
+            filterSegments = when (config.effectiveHlsAdFilteringMode) {
+                HlsAdFilteringMode.ALL -> true
+                HlsAdFilteringMode.SMART -> MediaSourceTags.HLS_ADS in mediaSourceTags(media.mediaSourceId)
+                HlsAdFilteringMode.OFF -> false
+            },
+            // 自动跳过 OP/ED 需要提前缓存跳转目标处的分片, 这要求分片经由本地代理
+            proxySegments = config.autoSkipOpEd,
+        )
+        if (!options.isEnabled) {
             return PreparedMediaData(data)
         }
-        val result = hlsPlaybackPreparer.prepare(data)
+        val result = hlsPlaybackPreparer.prepare(data, options, startPositionHintMillis)
         return PreparedMediaData(result.data, result.session)
+    }
+
+    private suspend fun mediaSourceTags(mediaSourceId: String): List<String> {
+        return getMediaSourceInstancesUseCase().first()
+            .find { it.mediaSourceId == mediaSourceId }
+            ?.config?.tags
+            .orEmpty()
     }
 
     private fun closeHlsPlaybackProxySession() {

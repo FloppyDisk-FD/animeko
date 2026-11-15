@@ -88,6 +88,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
+            isShrinkResources = true
             signingConfig = signingConfigs.findByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -100,10 +101,18 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
-    flavorDimensions += "distribution"
+    flavorDimensions += AniAndroidFlavors.DIMENSION
     productFlavors {
-        create("default") {
-            dimension = "distribution"
+        create(AniAndroidFlavors.DEFAULT) {
+            dimension = AniAndroidFlavors.DIMENSION
+            // The phone BT service uses SharedMemory (API 27); TV does not register that service.
+            minSdk = maxOf(27, getIntProperty("android.min.sdk"))
+        }
+        create(AniAndroidFlavors.TV) {
+            // Android TV 形态: 与 default 平级、单维度,
+            // 保证手机任务名 assembleDefaultRelease 与产物路径零变化.
+            dimension = AniAndroidFlavors.DIMENSION
+            applicationIdSuffix = ".tv"
         }
     }
     buildFeatures {
@@ -113,8 +122,10 @@ android {
 }
 
 dependencies {
+    // 两个 flavor 共用共享库；TV 对手机页面的访问边界靠约定 + Konsist 维护。
     implementation(projects.app.shared)
     implementation(projects.app.shared.application)
+    "tvImplementation"(projects.app.shared.tv)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
@@ -127,6 +138,7 @@ dependencies {
 
     implementation(libs.ktor.client.core)
     implementation(libs.mediamp.ffmpeg)
+    implementation(libs.sokkuri.runtime) // AniApplication / TvAniApplication 初始化弹幕简繁转换
 }
 
 idea {

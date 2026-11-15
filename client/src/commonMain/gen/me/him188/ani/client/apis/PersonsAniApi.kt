@@ -16,8 +16,14 @@
 
 package me.him188.ani.client.apis
 
+import me.him188.ani.client.models.AniCommentVoteValue
+import me.him188.ani.client.models.AniCreatePersonCommentRequest
+import me.him188.ani.client.models.AniCreatePersonReplyRequest
+import me.him188.ani.client.models.AniLegacyPersonCommentsPage
 import me.him188.ani.client.models.AniPersonCastsPage
-import me.him188.ani.client.models.AniPersonCommentsPage
+import me.him188.ani.client.models.AniPersonComment
+import me.him188.ani.client.models.AniPersonCommentRepliesResponse
+import me.him188.ani.client.models.AniPersonCommentsResponse
 import me.him188.ani.client.models.AniPersonDetails
 import me.him188.ani.client.models.AniPersonWorksPage
 
@@ -45,6 +51,110 @@ open class PersonsAniApi : ApiClient {
         baseUrl: String,
         httpClient: HttpClient
     ): super(baseUrl = baseUrl, httpClient = httpClient)
+
+    /**
+     * Add Ani person comment reaction
+     * Add Ani person comment reaction
+     * @param personId
+     * @param commentId
+     * @param `value`
+     * @return kotlin.Any
+     */
+    @Suppress("UNCHECKED_CAST")
+    open suspend fun addPersonCommentReaction(personId: kotlin.Long, commentId: kotlin.String, `value`: kotlin.String): HttpResponse<kotlin.Any> {
+
+        val localVariableAuthNames = listOf<String>("auth-jwt")
+
+        val localVariableBody =
+            io.ktor.client.utils.EmptyContent
+
+        val localVariableQuery = mutableMapOf<String, List<String>>()
+        val localVariableHeaders = mutableMapOf<String, String>()
+
+        val localVariableConfig = RequestConfig<kotlin.Any?>(
+            RequestMethod.PUT,
+            "/v2/persons/{personId}/comments/{commentId}/reactions/{value}".replace("{" + "personId" + "}", "$personId").replace("{" + "commentId" + "}", "$commentId").replace("{" + "value" + "}", "$`value`"),
+            query = localVariableQuery,
+            headers = localVariableHeaders,
+            requiresAuthentication = true,
+        )
+
+        return request(
+            localVariableConfig,
+            localVariableBody,
+            localVariableAuthNames
+        ).wrap()
+    }
+
+
+    /**
+     * Create Ani person comment
+     * Create Ani person comment
+     * @param personId
+     * @param aniCreatePersonCommentRequest
+     * @return kotlin.Any
+     */
+    @Suppress("UNCHECKED_CAST")
+    open suspend fun createPersonComment(personId: kotlin.Long, aniCreatePersonCommentRequest: AniCreatePersonCommentRequest): HttpResponse<kotlin.Any> {
+
+        val localVariableAuthNames = listOf<String>("auth-jwt")
+
+        val localVariableBody = aniCreatePersonCommentRequest
+
+        val localVariableQuery = mutableMapOf<String, List<String>>()
+        val localVariableHeaders = mutableMapOf<String, String>()
+
+        val localVariableConfig = RequestConfig<kotlin.Any?>(
+            RequestMethod.POST,
+            "/v2/persons/{personId}/comments".replace("{" + "personId" + "}", "$personId"),
+            query = localVariableQuery,
+            headers = localVariableHeaders,
+            requiresAuthentication = true,
+        )
+
+        return jsonRequest(
+            localVariableConfig,
+            localVariableBody,
+            localVariableAuthNames
+        ).wrap()
+    }
+
+
+
+    /**
+     * Create Ani person comment reply
+     * Create Ani person comment reply
+     * @param personId
+     * @param commentId
+     * @param aniCreatePersonReplyRequest
+     * @return kotlin.Any
+     */
+    @Suppress("UNCHECKED_CAST")
+    open suspend fun createPersonReply(personId: kotlin.Long, commentId: kotlin.String, aniCreatePersonReplyRequest: AniCreatePersonReplyRequest): HttpResponse<kotlin.Any> {
+
+        val localVariableAuthNames = listOf<String>("auth-jwt")
+
+        val localVariableBody = aniCreatePersonReplyRequest
+
+        val localVariableQuery = mutableMapOf<String, List<String>>()
+        val localVariableHeaders = mutableMapOf<String, String>()
+
+        val localVariableConfig = RequestConfig<kotlin.Any?>(
+            RequestMethod.POST,
+            "/v2/persons/{personId}/comments/{commentId}/replies".replace("{" + "personId" + "}", "$personId").replace("{" + "commentId" + "}", "$commentId"),
+            query = localVariableQuery,
+            headers = localVariableHeaders,
+            requiresAuthentication = true,
+        )
+
+        return jsonRequest(
+            localVariableConfig,
+            localVariableBody,
+            localVariableAuthNames
+        ).wrap()
+    }
+
+
 
     /**
      * 获取人物出演的角色 (条目 × 角色), 新条目在前.
@@ -84,15 +194,49 @@ open class PersonsAniApi : ApiClient {
 
 
     /**
-     * 获取人物评论 (吐槽箱, 无评分), 新评论在前.
-     * 获取人物评论 (吐槽箱, 无评分), 新评论在前.
+     * Get person comment
+     * 获取一条根评论, 供评论详情 (thread) 页使用. 响应的 &#x60;briefReplies&#x60; 为空, 回复用 &#x60;.../replies&#x60; 分页获取. &#x60;commentId&#x60; 接受列表响应里的稳定 &#x60;id&#x60; (&#x60;ani:&lt;uuid&gt;&#x60; / &#x60;bangumi:&lt;id&gt;&#x60;), 也接受裸 UUID (视为 Ani 评论). 评论不存在、已删除、不属于该人物/角色, 或者是楼中楼回复时 404. Bangumi 评论来自与列表相同的缓存; 上游故障且没有可用的旧结果时 503, 不像列表那样降级. 登录时带 &#x60;selfVote&#x60; 与贴纸回应的 &#x60;selected&#x60;.
+     * @param personId
+     * @param commentId
+     * @return AniPersonComment
+     */
+    @Suppress("UNCHECKED_CAST")
+    open suspend fun getPersonComment(personId: kotlin.Long, commentId: kotlin.String): HttpResponse<AniPersonComment> {
+
+        val localVariableAuthNames = listOf<String>("auth-jwt")
+
+        val localVariableBody =
+            io.ktor.client.utils.EmptyContent
+
+        val localVariableQuery = mutableMapOf<String, List<String>>()
+        val localVariableHeaders = mutableMapOf<String, String>()
+
+        val localVariableConfig = RequestConfig<kotlin.Any?>(
+            RequestMethod.GET,
+            "/v2/persons/{personId}/comments/{commentId}".replace("{" + "personId" + "}", "$personId").replace("{" + "commentId" + "}", "$commentId"),
+            query = localVariableQuery,
+            headers = localVariableHeaders,
+            requiresAuthentication = true,
+        )
+
+        return request(
+            localVariableConfig,
+            localVariableBody,
+            localVariableAuthNames
+        ).wrap()
+    }
+
+
+    /**
+     * 获取人物的 Bangumi 评论 (吐槽箱, 无评分), 新评论在前. 已废弃: 只含 Bangumi 评论, 为兼容旧客户端保留; 新客户端请用 &#x60;GET /persons/{personId}/comments/merged&#x60;.
+     * 获取人物的 Bangumi 评论 (吐槽箱, 无评分), 新评论在前. 已废弃: 只含 Bangumi 评论, 为兼容旧客户端保留; 新客户端请用 &#x60;GET /persons/{personId}/comments/merged&#x60;.
      * @param personId
      * @param offset  (optional)
      * @param limit  (optional)
-     * @return AniPersonCommentsPage
+     * @return AniLegacyPersonCommentsPage
      */
     @Suppress("UNCHECKED_CAST")
-    open suspend fun getPersonComments(personId: kotlin.Long, offset: kotlin.Int? = null, limit: kotlin.Int? = null): HttpResponse<AniPersonCommentsPage> {
+    open suspend fun getPersonComments(personId: kotlin.Long, offset: kotlin.Int? = null, limit: kotlin.Int? = null): HttpResponse<AniLegacyPersonCommentsPage> {
 
         val localVariableAuthNames = listOf<String>("auth-jwt")
 
@@ -154,8 +298,8 @@ open class PersonsAniApi : ApiClient {
 
 
     /**
-     * 获取人物参与的作品 (按条目分组, 含全部职位), 新条目在前.
-     * 获取人物参与的作品 (按条目分组, 含全部职位), 新条目在前.
+     * 获取人物参与的作品 (按条目分组, 含全部职位和配音), 新条目在前. 只配音、没有制作职位的条目也在其中, 此时 &#x60;positions&#x60; 为空.
+     * 获取人物参与的作品 (按条目分组, 含全部职位和配音), 新条目在前. 只配音、没有制作职位的条目也在其中, 此时 &#x60;positions&#x60; 为空.
      * @param personId
      * @param offset  (optional)
      * @param limit  (optional)
@@ -177,6 +321,189 @@ open class PersonsAniApi : ApiClient {
         val localVariableConfig = RequestConfig<kotlin.Any?>(
             RequestMethod.GET,
             "/v2/persons/{personId}/works".replace("{" + "personId" + "}", "$personId"),
+            query = localVariableQuery,
+            headers = localVariableHeaders,
+            requiresAuthentication = true,
+        )
+
+        return request(
+            localVariableConfig,
+            localVariableBody,
+            localVariableAuthNames
+        ).wrap()
+    }
+
+
+    /**
+     * List person comment replies
+     * 获取一条根评论下的楼中楼回复, 按发送时间正序, 游标翻页: 传上一页响应的 &#x60;nextCursor&#x60; 为 &#x60;after&#x60;, 不受翻页期间新增回复的影响. &#x60;commentId&#x60; 的取值与单条评论接口一致. 根评论不存在、已删除、不属于该人物/角色, 或者是楼中楼回复时 404. Bangumi 评论的回复一次全部返回, 没有游标; 上游故障且没有可用的旧结果时 503. 登录时每条回复带 &#x60;selfVote&#x60; 与贴纸回应的 &#x60;selected&#x60;.
+     * @param personId
+     * @param commentId
+     * @param after  (optional)
+     * @param limit  (optional)
+     * @return AniPersonCommentRepliesResponse
+     */
+    @Suppress("UNCHECKED_CAST")
+    open suspend fun listPersonCommentReplies(personId: kotlin.Long, commentId: kotlin.String, after: kotlin.String? = null, limit: kotlin.Int? = null): HttpResponse<AniPersonCommentRepliesResponse> {
+
+        val localVariableAuthNames = listOf<String>("auth-jwt")
+
+        val localVariableBody =
+            io.ktor.client.utils.EmptyContent
+
+        val localVariableQuery = mutableMapOf<String, List<String>>()
+        after?.apply { localVariableQuery["after"] = listOf("$after") }
+        limit?.apply { localVariableQuery["limit"] = listOf("$limit") }
+        val localVariableHeaders = mutableMapOf<String, String>()
+
+        val localVariableConfig = RequestConfig<kotlin.Any?>(
+            RequestMethod.GET,
+            "/v2/persons/{personId}/comments/{commentId}/replies".replace("{" + "personId" + "}", "$personId").replace("{" + "commentId" + "}", "$commentId"),
+            query = localVariableQuery,
+            headers = localVariableHeaders,
+            requiresAuthentication = true,
+        )
+
+        return request(
+            localVariableConfig,
+            localVariableBody,
+            localVariableAuthNames
+        ).wrap()
+    }
+
+
+    /**
+     * List person comments
+     * 获取人物评论 (Ani 自有评论 + Bangumi 吐槽箱), 新评论在前. &#x60;includeBangumi&#x3D;true&#x60; 时合并 Bangumi (next.bgm.tv) 的吐槽箱评论, 服务端缓存 10 分钟; Bangumi 评论的 &#x60;id&#x60; 为 &#x60;bangumi:&lt;评论id&gt;&#x60;, &#x60;canReply&#x3D;false&#x60;, &#x60;briefReplies&#x60; 包含全部楼中楼回复. 登录且绑定了 Bangumi 的用户会获得 Bangumi 表情回应的 &#x60;selected&#x60; 状态. Bangumi 上游故障时本接口仍正常返回 Ani 评论: 若服务端还留有上一次成功的结果则继续返回它 (最多 2 小时), 否则置 &#x60;bangumiUnavailable&#x3D;true&#x60;, 客户端应提示加载失败而不是当成 Bangumi 上没有评论. 翻页优先使用游标: 传上一页响应的 &#x60;nextCursor&#x60; 为 &#x60;after&#x60;, 不受滚动期间新增评论影响 (此时忽略 &#x60;offset&#x60;); &#x60;offset&#x60; 仍可用于跳页或首屏.
+     * @param personId
+     * @param offset  (optional)
+     * @param limit  (optional)
+     * @param includeBangumi  (optional)
+     * @param after  (optional)
+     * @return AniPersonCommentsResponse
+     */
+    @Suppress("UNCHECKED_CAST")
+    open suspend fun listPersonComments(personId: kotlin.Long, offset: kotlin.Int? = null, limit: kotlin.Int? = null, includeBangumi: kotlin.Boolean? = null, after: kotlin.String? = null): HttpResponse<AniPersonCommentsResponse> {
+
+        val localVariableAuthNames = listOf<String>("auth-jwt")
+
+        val localVariableBody =
+            io.ktor.client.utils.EmptyContent
+
+        val localVariableQuery = mutableMapOf<String, List<String>>()
+        offset?.apply { localVariableQuery["offset"] = listOf("$offset") }
+        limit?.apply { localVariableQuery["limit"] = listOf("$limit") }
+        includeBangumi?.apply { localVariableQuery["includeBangumi"] = listOf("$includeBangumi") }
+        after?.apply { localVariableQuery["after"] = listOf("$after") }
+        val localVariableHeaders = mutableMapOf<String, String>()
+
+        val localVariableConfig = RequestConfig<kotlin.Any?>(
+            RequestMethod.GET,
+            "/v2/persons/{personId}/comments/merged".replace("{" + "personId" + "}", "$personId"),
+            query = localVariableQuery,
+            headers = localVariableHeaders,
+            requiresAuthentication = true,
+        )
+
+        return request(
+            localVariableConfig,
+            localVariableBody,
+            localVariableAuthNames
+        ).wrap()
+    }
+
+
+    /**
+     * Remove Ani person comment reaction
+     * Remove Ani person comment reaction
+     * @param personId
+     * @param commentId
+     * @param `value`
+     * @return kotlin.Any
+     */
+    @Suppress("UNCHECKED_CAST")
+    open suspend fun removePersonCommentReaction(personId: kotlin.Long, commentId: kotlin.String, `value`: kotlin.String): HttpResponse<kotlin.Any> {
+
+        val localVariableAuthNames = listOf<String>("auth-jwt")
+
+        val localVariableBody =
+            io.ktor.client.utils.EmptyContent
+
+        val localVariableQuery = mutableMapOf<String, List<String>>()
+        val localVariableHeaders = mutableMapOf<String, String>()
+
+        val localVariableConfig = RequestConfig<kotlin.Any?>(
+            RequestMethod.DELETE,
+            "/v2/persons/{personId}/comments/{commentId}/reactions/{value}".replace("{" + "personId" + "}", "$personId").replace("{" + "commentId" + "}", "$commentId").replace("{" + "value" + "}", "$`value`"),
+            query = localVariableQuery,
+            headers = localVariableHeaders,
+            requiresAuthentication = true,
+        )
+
+        return request(
+            localVariableConfig,
+            localVariableBody,
+            localVariableAuthNames
+        ).wrap()
+    }
+
+
+    /**
+     * Remove vote on Ani person comment
+     * 撤销点赞或点踩. 没投过时也返回 204.
+     * @param personId
+     * @param commentId
+     * @return kotlin.Any
+     */
+    @Suppress("UNCHECKED_CAST")
+    open suspend fun removePersonCommentVote(personId: kotlin.Long, commentId: kotlin.String): HttpResponse<kotlin.Any> {
+
+        val localVariableAuthNames = listOf<String>("auth-jwt")
+
+        val localVariableBody =
+            io.ktor.client.utils.EmptyContent
+
+        val localVariableQuery = mutableMapOf<String, List<String>>()
+        val localVariableHeaders = mutableMapOf<String, String>()
+
+        val localVariableConfig = RequestConfig<kotlin.Any?>(
+            RequestMethod.DELETE,
+            "/v2/persons/{personId}/comments/{commentId}/vote".replace("{" + "personId" + "}", "$personId").replace("{" + "commentId" + "}", "$commentId"),
+            query = localVariableQuery,
+            headers = localVariableHeaders,
+            requiresAuthentication = true,
+        )
+
+        return request(
+            localVariableConfig,
+            localVariableBody,
+            localVariableAuthNames
+        ).wrap()
+    }
+
+
+    /**
+     * Vote on Ani person comment
+     * 对 Ani 人物评论点赞或点踩. 根评论与楼中楼回复都可以投票. 赞与踩互斥, 重复调用同一个值是幂等的. &#x60;commentId&#x60; 是响应里的 &#x60;sourceCommentId&#x60; (裸 UUID), 不是带 &#x60;ani:&#x60; 前缀的 &#x60;id&#x60;. Bangumi 来源的评论不可投票.
+     * @param personId
+     * @param commentId
+     * @param vote
+     * @return kotlin.Any
+     */
+    @Suppress("UNCHECKED_CAST")
+    open suspend fun votePersonComment(personId: kotlin.Long, commentId: kotlin.String, vote: AniCommentVoteValue): HttpResponse<kotlin.Any> {
+
+        val localVariableAuthNames = listOf<String>("auth-jwt")
+
+        val localVariableBody =
+            io.ktor.client.utils.EmptyContent
+
+        val localVariableQuery = mutableMapOf<String, List<String>>()
+        val localVariableHeaders = mutableMapOf<String, String>()
+
+        val localVariableConfig = RequestConfig<kotlin.Any?>(
+            RequestMethod.PUT,
+            "/v2/persons/{personId}/comments/{commentId}/vote/{vote}".replace("{" + "personId" + "}", "$personId").replace("{" + "commentId" + "}", "$commentId").replace("{" + "vote" + "}", "${ vote.value }"),
             query = localVariableQuery,
             headers = localVariableHeaders,
             requiresAuthentication = true,

@@ -27,6 +27,9 @@ val overrideAniApiServer = getPropertyOrNull("ani.api.server")?.takeIf { it.isNo
 
 val distroChannel = getPropertyOrNull("ani.distro.channel") ?: "default"
 
+// 构建时的 git 分支 / commit, 在 "关于 > 构建信息" 里展示. 见 build-logic 的 git.kt.
+val currentGitInfo = gitInfo.get()
+
 kotlin {
     android {
         namespace = "me.him188.ani.app.platform"
@@ -48,11 +51,6 @@ kotlin {
         api(libs.kotlinx.coroutines.core)
         api(projects.danmaku.danmakuApi)
         api(libs.kotlinx.collections.immutable)
-        api(projects.app.shared.imageViewer)
-
-        api(libs.coil.compose.core)
-        api(libs.coil.svg)
-        api(libs.coil.network.ktor3)
 
         api(libs.compose.lifecycle.viewmodel.compose)
         api(libs.compose.lifecycle.runtime.compose)
@@ -75,6 +73,8 @@ kotlin {
         api(projects.utils.buildConfig)
     }
     sourceSets.desktopMain.dependencies {
+        implementation(projects.utils.coroutines)
+        implementation(projects.utils.macosShare)
         api(libs.jna)
         api(libs.jna.platform)
     }
@@ -96,6 +96,12 @@ buildConfig {
     outputDir.set(layout.buildDirectory.dir("generated/buildconfig"))
 
     // Desktop platform configuration
+    fun BuildConfigPlatform.gitFields() {
+        stringField("gitBranch", currentGitInfo.branch)
+        stringField("gitCommitSha", currentGitInfo.commitSha)
+        stringField("gitCommitTime", currentGitInfo.commitTime)
+    }
+
     platform("desktop") {
         stringField("versionName", project.version.toString())
         expressionField(
@@ -106,6 +112,7 @@ buildConfig {
         stringField("dandanplayAppSecret", dandanplayAppSecret)
         stringField("overrideAniApiServer", overrideAniApiServer ?: "")
         stringField("distroChannel", distroChannel)
+        gitFields()
     }
 
     // Android platform configuration
@@ -116,6 +123,7 @@ buildConfig {
         stringField("dandanplayAppSecret", dandanplayAppSecret)
         stringField("overrideAniApiServer", overrideAniApiServer ?: "")
         stringField("distroChannel", distroChannel)
+        gitFields()
     }
 
     // iOS platform configuration (only if enabled)
@@ -127,6 +135,7 @@ buildConfig {
             stringField("dandanplayAppSecret", dandanplayAppSecret)
             stringField("overrideAniApiServer", overrideAniApiServer ?: "")
             stringField("distroChannel", distroChannel)
+            gitFields()
         }
     }
 }

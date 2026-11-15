@@ -4,7 +4,6 @@ set -euo pipefail
 GIT_TAG="${1:-${GITHUB_REF_NAME:-}}"
 TAG_VERSION="${2:-${GIT_TAG#v}}"
 REPOSITORY="${GITHUB_REPOSITORY:-open-ani/animeko}"
-CODEX_MODEL="${CODEX_MODEL:-gpt-5.5}"
 
 if [[ -z "$GIT_TAG" ]]; then
   echo "Usage: $0 <git-tag> [tag-version]" >&2
@@ -149,12 +148,19 @@ $(cat "$workdir/merge-log.md")
 $(cat "$workdir/git-log.md")
 PROMPT
 
+# codex 的输出只落在临时目录里, 退出时随目录删除, 不回显到 CI 日志, 避免泄露 prompt 里的内容; 失败时只报告退出码.
+codex_status=0
 codex exec \
-  --model "$CODEX_MODEL" \
+  --model gpt-6-astra \
+  -c 'model_reasoning_effort="high"' \
   --sandbox read-only \
   --ephemeral \
   --output-last-message "$workdir/codex-notes.md" \
-  - < "$workdir/prompt.md" > "$workdir/codex.log" 2>&1
+  - < "$workdir/prompt.md" > "$workdir/codex.log" 2>&1 || codex_status=$?
+if [[ "$codex_status" -ne 0 ]]; then
+  echo "codex exec failed with exit code $codex_status" >&2
+  exit "$codex_status"
+fi
 
 python3 - "$workdir/codex-notes.md" "$workdir/pull-requests.md" "$COMPARE_URL" <<'PY'
 import re

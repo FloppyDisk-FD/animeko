@@ -21,6 +21,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.AccountTree
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -48,6 +49,7 @@ import me.him188.ani.app.ui.lang.subject_details_air_date_format
 import me.him188.ani.app.ui.lang.subject_details_aliases
 import me.him188.ani.app.ui.lang.subject_details_info
 import me.him188.ani.app.ui.lang.subject_details_manage_cache
+import me.him188.ani.app.ui.lang.subject_relation_graph_entry
 import me.him188.ani.app.ui.lang.subject_details_show_less
 import me.him188.ani.app.ui.lang.subject_details_show_more
 import me.him188.ani.app.ui.lang.subject_details_total_episodes
@@ -110,6 +112,24 @@ fun SectionHeaderActionButton(
 }
 
 /**
+ * 关联条目区块标题行的 "关系图" 入口, 打开条目所在系列的关系图.
+ */
+@Composable
+fun SectionHeaderRelationGraphButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    TextButton(onClick, modifier) {
+        Icon(
+            Icons.Rounded.AccountTree,
+            contentDescription = null,
+            Modifier.size(18.dp),
+        )
+        Text(stringResource(Lang.subject_relation_graph_entry), Modifier.padding(start = 4.dp))
+    }
+}
+
+/**
  * 选集区块标题行的 "↓ 缓存管理" 入口 (对齐 Figma `SectionHeader + Actions` 的缓存管理入口).
  *
  * [showLabel] 为 false 时只显示图标: 手机与窄双栏的 header 放不下文字标签 (会挤压标题).
@@ -152,10 +172,11 @@ fun SubjectSummarySection(
     var expanded by rememberSaveable { mutableStateOf(false) }
     var hasOverflow by remember { mutableStateOf(false) }
     Column(modifier.fillMaxWidth()) {
+        // 正文不响应点击: 点击/拖动留给文本选择 (复制), 展开只走下方按钮.
         SelectionContainer {
             Text(
                 summary,
-                Modifier.fillMaxWidth().clickable { expanded = !expanded },
+                Modifier.fillMaxWidth(),
                 style = MaterialTheme.typography.bodyMedium,
                 maxLines = if (expanded) Int.MAX_VALUE else collapsedMaxLines,
                 overflow = TextOverflow.Ellipsis,

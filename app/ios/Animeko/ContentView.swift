@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 import UIKit // Import UIKit for UIViewController specifics
 import application // Import your KMP shared module (ensure this is the correct name)
 
@@ -73,6 +74,18 @@ struct ContentView: View {
 }
 
 class SwiftBridgeImpl : ISwiftBridge {
+    func createEnhancedPlayerView(player: AVPlayer, onUnavailable: @escaping () -> Void) -> UIView {
+        EnhancedPlayerView(player: player, onUnavailable: onUnavailable)
+    }
+
+    func updateEnhancedPlayerView(view: UIView, mode: Int32, aspect: Int32) {
+        (view as? EnhancedPlayerView)?.update(mode: Int(mode), aspect: Int(aspect))
+    }
+
+    func releaseEnhancedPlayerView(view: UIView) {
+        (view as? EnhancedPlayerView)?.close()
+    }
+
 	func navigationController(_ receiver: UIViewController) -> UINavigationController? {
 		return receiver.navigationController
 	}
@@ -85,7 +98,12 @@ class SwiftBridgeImpl : ISwiftBridge {
 		:
 		UIDeviceOrientation.portrait
 		
+		// 全屏期间锁定为横屏, 否则从后台切回来时系统会把界面转回竖屏. 必须在请求旋转之前设置.
+		AppDelegate.orientationLock = fullscreen ? .landscape : nil
+
 		if #available(iOS 16.0, *) {
+			uiViewController.view.window?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+
 			if let scene = uiViewController.view.window?.windowScene {
 				// 1. Build the geometry-preferences object
 				let geometryPreferences = UIWindowScene.GeometryPreferences.iOS()

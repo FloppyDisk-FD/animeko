@@ -9,6 +9,7 @@
 
 package me.him188.ani.app.platform
 
+import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -21,6 +22,8 @@ import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Stable
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
+import io.github.vinceglb.filekit.FileKit
+import io.github.vinceglb.filekit.dialogs.init
 import kotlinx.atomicfu.AtomicRef
 import kotlinx.atomicfu.atomic
 import kotlinx.coroutines.CompletableDeferred
@@ -32,12 +35,24 @@ import java.util.concurrent.ConcurrentLinkedQueue
 
 
 abstract class AniComponentActivity : ComponentActivity() {
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(createAppLocaleController(newBase).wrapBaseContext(newBase))
+    }
+
     @Stable
     val snackbarHostState = SnackbarHostState()
 
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        createAppLocaleController(this).applyDefaultLocale(this)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        createAppLocaleController(this).applyDefaultLocale(this)
         super.onCreate(savedInstanceState)
         initializeViewTreeOwners()
+        // FileKit.openFileSaver 等非 Compose 对话框需要 Activity 的 ActivityResultRegistry (图片查看器的保存)
+        FileKit.init(this)
     }
 
     private val requestPermissionHandlers: MutableCollection<(Boolean) -> Unit> = ConcurrentLinkedQueue()

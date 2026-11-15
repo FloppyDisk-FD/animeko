@@ -36,11 +36,14 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.runningFold
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.transform
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.io.IOException
 import me.him188.ani.app.data.models.episode.EpisodeInfo
 import me.him188.ani.app.data.models.episode.displayName
 import me.him188.ani.app.data.models.subject.SubjectInfo
+import me.him188.ani.app.data.models.subject.SubjectSeriesInfo
 import me.him188.ani.app.data.models.subject.nameCnOrName
 import me.him188.ani.app.data.repository.RepositoryAuthorizationException
 import me.him188.ani.app.data.repository.RepositoryException
@@ -118,11 +121,16 @@ interface MediaFetcher {
 
 /**
  * 根据 [SubjectInfo] 和 [EpisodeInfo] 创建一个 [MediaFetchRequest].
- * @see createFlow
+ *
+ * @param episode 当前剧集, 仅作提示.
+ * @param episodes 条目的全部剧集, 按剧集顺序; 数据源用它做序号映射与缓存陈旧判定.
+ * @param seriesInfo 系列信息, 用于推导回退搜索关键词 ([computeFallbackSearchKeywords]). 未知时只能从条目自己的名字推导.
  */
 fun MediaFetchRequest.Companion.create(
     subject: SubjectInfo,
     episode: EpisodeInfo,
+    episodes: List<EpisodeInfo> = emptyList(),
+    seriesInfo: SubjectSeriesInfo? = null,
 ): MediaFetchRequest {
     return MediaFetchRequest(
         subjectId = subject.subjectId.toString(),
@@ -132,6 +140,19 @@ fun MediaFetchRequest.Companion.create(
         episodeSort = episode.sort,
         episodeName = episode.displayName,
         episodeEp = episode.ep,
+        episodes = episodes.map {
+            MediaFetchRequest.Episode(
+                episodeId = it.episodeId.toString(),
+                sort = it.sort,
+                ep = it.ep,
+                name = it.displayName,
+                airDate = it.airDate,
+            )
+        },
+        fallbackSearchKeywords = computeFallbackSearchKeywords(
+            subject.allNames,
+            seriesInfo?.seriesSubjectNamesWithoutSelf.orEmpty(),
+        ),
     )
 }
 
@@ -173,6 +194,19 @@ class MediaSourceMediaFetcher(
             MutableStateFlow(if (disabled) MediaSourceFetchState.Disabled else MediaSourceFetchState.Idle)
         private val restartCount = MutableStateFlow(0) // 只能在 [restart] 内修改
 
+        override val searchStats: MutableStateFlow<MediaSourceSearchStats?> = MutableStateFlow(null)
+
+        /**
+         * 数据源在 [results] 的收集上下文里报告每个关键词是否命中搜索缓存.
+         */
+        private val telemetry = MediaSourceFetchTelemetry { _, cacheHit ->
+            searchStats.update { stats ->
+                val current = stats ?: MediaSourceSearchStats()
+                if (cacheHit) current.copy(cacheHits = current.cacheHits + 1)
+                else current.copy(onlineSearches = current.onlineSearches + 1)
+            }
+        }
+
         override val results by lazy {
             restartCount.flatMapLatest { restartCount ->
 
@@ -186,7 +220,7 @@ class MediaSourceMediaFetcher(
                     // 此时的 currentState 是可信的
 
                     if (restartCount == 0 && currentState is MediaSourceFetchState.Disabled)
-                        return@flatMapLatest flowOf(emptyList()) // 禁用的数据源, 第一次查询给空列表, 必须要 restart 才能发起查询
+                        return@flatMapLatest flowOf(FetchUpdate.Results(restartCount, emptyList())) // 禁用的数据源, 第一次查询给空列表, 必须要 restart 才能发起查询
 
                     val lastRestartCount = when (currentState) {
                         is MediaSourceFetchState.Completed -> currentState.id
@@ -198,15 +232,17 @@ class MediaSourceMediaFetcher(
                     }
                 }
 
+                var terminalState: MediaSourceFetchState.Completed? = null
                 pagedSources
                     .onStart {
+                        searchStats.value = null
                         state.value = MediaSourceFetchState.Working
                     }
                     .flatMapMerge { sources ->
                         sources.results.map { it.media }
                     }
                     .catch { exception ->
-                        state.value = when {
+                        terminalState = when {
                             exception is BlockedException -> when (val reason = exception.reason) {
                                 is BlockReason.Captcha -> MediaSourceFetchState.CaptchaRequired(
                                     exception.request,
@@ -217,7 +253,7 @@ class MediaSourceMediaFetcher(
                                     retryAt = currentTimeMillis() +
                                             (reason.retryAfter ?: DEFAULT_RATE_LIMIT_RETRY_DELAY).inWholeMilliseconds,
                                     id = restartCount,
-                                ).also { scheduleRateLimitAutoRestart(it) }
+                                )
 
                                 else -> MediaSourceFetchState.Failed(exception, restartCount)
                             }
@@ -229,36 +265,56 @@ class MediaSourceMediaFetcher(
                     .runningFold(emptyList<Media>()) { acc, list ->
                         acc + list
                     }
-                    .map { list ->
-                        list.distinctBy { it.mediaId }
+                    .map<List<Media>, FetchUpdate> { list ->
+                        FetchUpdate.Results(restartCount, list.distinctBy { it.mediaId })
                     }
                     .onStart {
                         // 启动时 emit emptyList, 更新 replayCache 为 empty. 
                         // 这是为了处理 cancellation. 如果 results collect 在 emit 第一个 list 之前就被 cancel, 就会记忆一个 MediaSourceFetchState.Failed, 并且下次重新 collect 也不会重试.
-                        emit(emptyList())
+                        emit(FetchUpdate.Results(restartCount, emptyList()))
                     }
                     .onCompletion { exception ->
                         if (exception == null) {
-                            // catch might have already updated the state
-                            if (state.value !is MediaSourceFetchState.Completed) {
-                                resetRateLimitAutoRestartBudget()
-                                state.value = MediaSourceFetchState.Succeed(restartCount)
-                                // 不能直接设置为 Succeed, 必须等待 `shareIn` 完成缓存 (replayCache)
-                            }
+                            // flatMapLatest buffers its output. Publish the terminal state only after
+                            // all preceding results have reached shareIn, including partial failures.
+                            emit(FetchUpdate.Completed(terminalState ?: MediaSourceFetchState.Succeed(restartCount)))
                         } else {
-                            val currentState = state.value
-                            if (currentState !is MediaSourceFetchState.Failed) {
-                                // downstream (collector) failure
-                                state.value = MediaSourceFetchState.Abandoned(exception, restartCount)
-                                if (exception !is CancellationException) {
-                                    logger.error(exception) { "Failed to fetch media from $mediaSourceId due to downstream error" }
+                            synchronized(this@MediaSourceResultImpl) {
+                                // Cancellation of an old run must not terminate a restarted query.
+                                if (this@MediaSourceResultImpl.restartCount.value == restartCount &&
+                                    state.value !is MediaSourceFetchState.Completed
+                                ) {
+                                    state.value = MediaSourceFetchState.Abandoned(exception, restartCount)
                                 }
                             }
-                            // upstream failure re-caught here
+                            if (exception !is CancellationException) {
+                                logger.error(exception) { "Failed to fetch media from $mediaSourceId due to downstream error" }
+                            }
                         }
                     }
+            }.transform { update ->
+                currentCoroutineContext().ensureActive()
+                if (update.generation != restartCount.value) return@transform
+                when (update) {
+                    is FetchUpdate.Results -> emit(update.results)
+                    is FetchUpdate.Completed -> {
+                        // This transform runs on the shareIn collector side of flatMapLatest's buffer.
+                        // Earlier emits have updated replay before a terminal state becomes visible.
+                        val published = synchronized(this@MediaSourceResultImpl) {
+                            if (update.generation != restartCount.value) false else {
+                                if (update.state is MediaSourceFetchState.Succeed) rateLimitAutoRestartBudget = 1
+                                state.value = update.state
+                                true
+                            }
+                        }
+                        if (published && update.state is MediaSourceFetchState.RateLimited && state.value == update.state) {
+                            scheduleRateLimitAutoRestart(update.state)
+                        }
+                    }
+                }
             }.shareIn(
-                CoroutineScope(flowContext), replay = 1, started = SharingStarted.WhileSubscribed(),
+                // 数据源的搜索在这个作用域里执行; telemetry 随上下文传给它, 用于报告搜索缓存命中.
+                CoroutineScope(flowContext + telemetry), replay = 1, started = SharingStarted.WhileSubscribed(),
             ).onCompletion {
                 if (it == null)
                     logger.error { "results is completed normally, however it shouldn't" }
@@ -338,12 +394,6 @@ class MediaSourceMediaFetcher(
             }
         }
 
-        private fun resetRateLimitAutoRestartBudget() {
-            synchronized(this) {
-                rateLimitAutoRestartBudget = 1
-            }
-        }
-
         override fun restart() {
             // 不允许同时调用 restart
             synchronized(this) {
@@ -400,10 +450,11 @@ class MediaSourceMediaFetcher(
 
         private val overrideFetchRequest = MutableStateFlow<MediaFetchRequest?>(null)
 
-        override val request: Flow<MediaFetchRequest> =
+        override val latestRequest: Flow<MediaFetchRequest> =
             combine(initialFetchRequest, overrideFetchRequest) { initial, override ->
                 override ?: initial
-            }.take(1) // 否则会一直显示加载
+            }
+        override val request: Flow<MediaFetchRequest> = latestRequest.take(1) // 否则会一直显示加载
 
         override val mediaSourceResults: List<MediaSourceFetchResult> = mediaSources
             .filter {
@@ -519,4 +570,24 @@ data class CompletedConditions(
             ImmutableEnumMap { true },
         )
     }
+}
+
+/** Ordered updates crossing flatMapLatest's buffer before entering the shared result cache. */
+private sealed interface FetchUpdate {
+    val generation: Int
+
+    data class Results(override val generation: Int, val results: List<Media>) : FetchUpdate
+    data class Completed(val state: MediaSourceFetchState.Completed) : FetchUpdate {
+        override val generation: Int get() = state.id
+    }
+}
+
+/**
+ * 用户在查询请求编辑器里改了当前集的集数时, 选择器按改后的集数匹配 (站点集数与 Bangumi 对不上时的修正手段).
+ * 请求里的集数只对请求指向的那一集生效 (查询会话按条目共用).
+ */
+internal fun EpisodeInfo.withRequestedNumbers(request: MediaFetchRequest): EpisodeInfo {
+    if (request.episodeId != episodeId.toString()) return this
+    if (request.episodeSort == sort && request.episodeEp == ep) return this
+    return copy(sort = request.episodeSort, ep = request.episodeEp)
 }

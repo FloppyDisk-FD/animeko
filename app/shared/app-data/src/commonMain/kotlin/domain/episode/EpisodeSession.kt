@@ -23,9 +23,11 @@ import me.him188.ani.app.domain.foundation.LoadError
 import me.him188.ani.app.domain.media.fetch.MediaFetchSession
 import me.him188.ani.app.domain.media.fetch.MediaFetcher
 import me.him188.ani.app.domain.media.selector.MediaSelector
+import me.him188.ani.app.domain.player.analytics.PlayFlowEpisode
 import me.him188.ani.utils.coroutines.childScope
 import org.koin.core.Koin
 import kotlin.coroutines.CoroutineContext
+import kotlin.time.TimeSource
 
 
 /**
@@ -47,6 +49,8 @@ import kotlin.coroutines.CoroutineContext
  *
  * @param subjectId 当前所管理的番剧或节目主体 ID。
  * @param episodeId 当前 session 管理的 episode ID，与本会话的生命周期强绑定。
+ * @param fetchSessions 条目级查询会话, 各集共用; 为 `null` 时每个 session 自行创建查询会话.
+ * @param playFlowEpisode 本 session 在播放页加载流程埋点中对应的剧集尝试. 扩展上报事件时带上它, 切集后旧任务补发的事件不会错配.
  */
 class EpisodeSession(
     subjectId: Int,
@@ -54,6 +58,8 @@ class EpisodeSession(
     koin: Koin,
     parentCoroutineContext: CoroutineContext,
     sharingStarted: SharingStarted = SharingStarted.WhileSubscribed(),
+    fetchSessions: SubjectMediaFetchSessions? = null,
+    val playFlowEpisode: PlayFlowEpisode = PlayFlowEpisode(episodeId, attempt = 1, startedAt = TimeSource.Monotonic.markNow()),
 ) {
     private val createMediaFetchSelectBundleFlowUseCase: CreateMediaFetchSelectBundleFlowUseCase by koin.inject()
 
@@ -97,8 +103,10 @@ class EpisodeSession(
      *
      * This flow does not produce errors.
      */
-    val fetchSelectFlow = createMediaFetchSelectBundleFlowUseCase(infoBundleFlow)
-        .shareIn(sessionScope, sharingStarted, replay = 1)
+    val fetchSelectFlow = (
+            if (fetchSessions == null) createMediaFetchSelectBundleFlowUseCase(infoBundleFlow)
+            else createMediaFetchSelectBundleFlowUseCase(infoBundleFlow, fetchSessions)
+            ).shareIn(sessionScope, sharingStarted, replay = 1)
     // TODO: 2025/1/4 test fetchSelectFlow changes only when infoBundleFlow's value equality changes 
 
     /**

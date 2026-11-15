@@ -24,9 +24,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import me.him188.ani.datasources.api.source.FactoryId
-import me.him188.ani.utils.analytics.Analytics
-import me.him188.ani.utils.analytics.AnalyticsEvent
-import me.him188.ani.utils.analytics.AnalyticsEvent.Companion.EpisodeEnter
 
 /**
  * Supports navigation to any page in the app.
@@ -80,6 +77,10 @@ interface AniNavigator {
         navigate(NavRoutes.SubjectDetail(subjectId, placeholder))
     }
 
+    fun navigateSubjectRelationGraph(subjectId: Int) {
+        navigate(NavRoutes.SubjectRelationGraph(subjectId))
+    }
+
     fun navigateSubjectCaches(subjectId: Int) {
         navigate(NavRoutes.SubjectCaches(subjectId))
     }
@@ -104,39 +105,12 @@ interface AniNavigator {
         // 避免同一个剧集在栈中重复出现
         popBackStack(NavRoutes.EpisodeDetail(subjectId, episodeId), inclusive = true)
         navigate(NavRoutes.EpisodeDetail(subjectId, episodeId))
-        Analytics.recordEvent(
-            EpisodeEnter,
-            mapOf("subject_id" to subjectId, "episode_id" to episodeId),
-        )
-    }
-
-    fun navigateWelcome() {
-        navigate(NavRoutes.Welcome)
-    }
-
-    /**
-     * 向导结束后, 导航到主页时要弹出的目标.
-     *
-     * @see NavRoutes.Onboarding.popUpTargetInclusive
-     */
-    fun navigateOnboarding(completionPopUpTargetInclusive: NavRoutes?) {
-        navigate(NavRoutes.Onboarding(completionPopUpTargetInclusive))
-    }
-
-    /**
-     * 向导结束后, 导航到主页时要弹出的目标.
-     *
-     * @see NavRoutes.Onboarding.popUpTargetInclusive
-     */
-    fun navigateOnboardingComplete(completionPopUpTargetInclusive: NavRoutes?) {
-        navigate(NavRoutes.OnboardingComplete(completionPopUpTargetInclusive))
-        Analytics.recordEvent(AnalyticsEvent.OnboardingDone)
     }
 
     /**
      * 导航到主页. 如果指定了 [popUpTargetInclusive], 则先把它 (含) 之上的页面全部弹出.
      *
-     * 注意这里允许把栈弹空 (例如从 [NavRoutes.Welcome] 开始的向导结束时), 因为紧接着就会压入主页.
+     * 注意这里允许把栈弹空, 因为紧接着就会压入主页.
      */
     fun navigateMain(
         page: MainScreenPage,
@@ -169,8 +143,26 @@ interface AniNavigator {
         navigate(NavRoutes.EmailLoginStart)
     }
 
+    /**
+     * @param provider 平台 ID, 见 `OAuthPlatform.id`
+     */
+    fun navigateOAuthAuthorize(provider: String) {
+        navigate(NavRoutes.OAuthAuthorize(provider))
+    }
+
     fun navigateBangumiAuthorize() {
-        navigate(NavRoutes.BangumiAuthorize)
+        navigateOAuthAuthorize("bangumi")
+    }
+
+    fun navigateQrLoginScan() {
+        navigate(NavRoutes.QrLoginScan)
+    }
+
+    /**
+     * @param requestId 见 [NavRoutes.QrLoginConfirm.requestId]
+     */
+    fun navigateQrLoginConfirm(requestId: String) {
+        navigate(NavRoutes.QrLoginConfirm(requestId))
     }
 
     fun navigatePlaybackHistorySyncStatus() {
@@ -212,8 +204,55 @@ interface AniNavigator {
         navigate(NavRoutes.Schedule)
     }
 
+    fun navigateTrendingRanking() {
+        navigate(NavRoutes.TrendingRanking)
+    }
+
     fun navigatePlaybackHistory() {
         navigate(NavRoutes.PlaybackHistory)
+    }
+
+    /**
+     * 合并收藏: 处理 Animeko 与 Bangumi 两侧的收藏冲突.
+     */
+    fun navigateBangumiMerge() {
+        navigate(NavRoutes.BangumiMerge)
+    }
+
+    fun navigateNotifications() {
+        navigate(NavRoutes.Notifications)
+    }
+
+    /**
+     * @param notificationId 见 [NavRoutes.NotificationDetail.notificationId]
+     */
+    fun navigateNotificationDetail(notificationId: String) {
+        // 避免同一条通知在栈中重复出现
+        popBackStack(NavRoutes.NotificationDetail(notificationId), inclusive = true)
+        navigate(NavRoutes.NotificationDetail(notificationId))
+    }
+
+    fun navigateAnnouncements() {
+        navigate(NavRoutes.Announcements)
+    }
+
+    /**
+     * @param announcementId 见 [NavRoutes.AnnouncementDetail.announcementId]
+     */
+    fun navigateAnnouncementDetail(announcementId: String) {
+        popBackStack(NavRoutes.AnnouncementDetail(announcementId), inclusive = true)
+        navigate(NavRoutes.AnnouncementDetail(announcementId))
+    }
+
+    fun navigateNotificationSettings() {
+        navigate(NavRoutes.NotificationSettings)
+    }
+
+    /**
+     * 整页打开一条评论的详情 (thread). 见 [NavRoutes.CommentThread].
+     */
+    fun navigateCommentThread(target: CommentThreadTarget, commentId: String, focusReplyId: String? = null) {
+        navigate(NavRoutes.CommentThread(target, commentId, focusReplyId))
     }
 }
 

@@ -24,6 +24,19 @@ interface IAnalytics {
     )
 
     fun onAppStart() {}
+
+    /**
+     * 实现在每条事件上自己附加的属性数 (平台、版本、会话等). 它们和调用方传入的属性一起计入 GA4 的 [MAX_EVENT_PROPERTIES] 上限,
+     * 超出时 GA4 只保留其中一部分 (保留哪些不确定), 所以调用方一条事件最多传 `MAX_EVENT_PROPERTIES - extraPropertyCount` 个属性.
+     */
+    val extraPropertyCount: Int get() = 0
+
+    companion object {
+        /**
+         * GA4 单条事件的属性上限, 包含实现附加的 [extraPropertyCount].
+         */
+        const val MAX_EVENT_PROPERTIES = 25
+    }
 }
 
 inline fun IAnalytics.recordEvent(
@@ -38,16 +51,12 @@ value class AnalyticsEvent(val event: String) {
     companion object {
         val Screen = AnalyticsEvent("screen")
         val AppStart = Screen // compatibility
+        val ScreenView = AnalyticsEvent("screen_view")
         val SessionStart = AnalyticsEvent("session_start")
 
         val AppServerTestSuccess = AnalyticsEvent("app_server_test_success")
         val AppServerTestError = AnalyticsEvent("app_server_test_error")
         val AppServerSelectError = AnalyticsEvent("app_server_select_error")
-
-        val OnboardingStart = AnalyticsEvent("onboarding_start")
-        val OnboardingNetworkEnter = AnalyticsEvent("onboarding_network_enter")
-        val OnboardingLoginEnter = AnalyticsEvent("onboarding_login_enter")
-        val OnboardingDone = AnalyticsEvent("onboarding_done")
 
         val NetworkCheckFailed = AnalyticsEvent("network_check_failed")
         val LoginClick = AnalyticsEvent("login_click")
@@ -57,6 +66,14 @@ value class AnalyticsEvent(val event: String) {
         val EpisodeEnter = AnalyticsEvent("episode_enter")
         val EpisodeSwitch = AnalyticsEvent("episode_switch")
         val EpisodePlaying = AnalyticsEvent("episode_playing")
+        val EpisodeExit = AnalyticsEvent("episode_exit")
+        val MediaFetchResult = AnalyticsEvent("media_fetch_result")
+
+        /**
+         * 播放页加载流程中的一步, 以 `step` 属性区分. 同一播放页的事件共享 `play_session_id`, 按 `seq` 排序即可重放.
+         * 见 `docs/contributing/code/analytics-play-flow.md`.
+         */
+        val PlayFlow = AnalyticsEvent("play_flow")
 
         val CacheCreate = AnalyticsEvent("cache_create")
 
