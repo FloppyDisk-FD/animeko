@@ -30,6 +30,8 @@ dependencyResolutionManagement {
     repositories {
         // mavenLocal 的位置不能动: 本地 mediamp / anitorrent 调试构建依赖它排在这里.
         mavenCentral()
+        // dl.google.com 在国内网络经常超时, 用阿里云镜像作为 Google Maven 的后备拉取依赖.
+        maven("https://maven.aliyun.com/repository/google")
         google()
         mavenLocal()
         maven("https://maven.pkg.jetbrains.space/public/p/compose/dev")
